@@ -25,7 +25,7 @@
  * AHBx and APBx Bus Peripherals base addrs
  */
 #define PERIPH_BASEADDR			0x40000000U
-#define APB1PERIPH_BASEADDR		PERIPH_BASE
+#define APB1PERIPH_BASEADDR		PERIPH_BASEADDR
 #define APB2PERIPH_BASEADDR		0x40010000U
 #define AHB1PERIPH_BASEADDR		0x40020000U
 #define AHB2PERIPH_BASEADDR		0x50000000U
@@ -209,6 +209,13 @@ typedef struct
  * Clock Disable Macros for SYSCFG peripheral
  */
 
+// generic macros
+#define ENABLE 			1
+#define DISABLE 		0
+#define SET 			ENABLE
+#define RESET 			DISABLE
+#define GPIO_PIN_SET	SET
+#define GPIO_PIN_RESET	RESET
 
 
 #endif /* INC_STM32F407XX_H_ */
