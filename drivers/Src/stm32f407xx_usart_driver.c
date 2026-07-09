@@ -252,14 +252,76 @@ void USART_PeriClockControl(USART_RegDef_t *pUSARTx, uint8_t EnorDi)
 		else if (pUSARTx == UART4)
 		{
 			UART4_PCCK_EN();
+		}else if (pUSARTx == UART5)
+		{
+			UART5_PCCK_EN();
+		}else if (pUSARTx == USART6)
+		{
+			USART6_PCCK_EN();
 		}
 	}
 	else
 	{
-		//TODO
+		if(pUSARTx == USART1)
+		{
+			USART1_PCCK_DI();
+		}else if (pUSARTx == USART2)
+		{
+			USART2_PCCK_DI();
+		}else if (pUSARTx == USART3)
+		{
+			USART3_PCCK_DI();
+		}else if (pUSARTx == UART4)
+		{
+			UART4_PCCK_DI();
+		}else if (pUSARTx == UART5)
+		{
+			UART5_PCCK_DI();
+		}else if (pUSARTx == USART6)
+		{
+			USART6_PCCK_DI();
+		}
 	}
 
 }
+
+/*********************************************************************
+ * @fn      		  - USART_DeInit
+ *
+ * @brief             - Resets the selected USART/UART peripheral registers
+ *
+ * @param[in]         - USART handle containing the peripheral base address
+ * @param[in]         -
+ * @param[in]         -
+ *
+ * @return            - none
+ *
+ * @Note              -
+
+ */
+void USART_DeInit(USART_Handle_t *pUSARTHandle)
+{
+	if(pUSARTHandle->pUSARTx == USART1)
+	{
+		USART1_REG_RESET();
+	}else if (pUSARTHandle->pUSARTx == USART2)
+	{
+		USART2_REG_RESET();
+	}else if (pUSARTHandle->pUSARTx == USART3)
+	{
+		USART3_REG_RESET();
+	}else if (pUSARTHandle->pUSARTx == UART4)
+	{
+		UART4_REG_RESET();
+	}else if (pUSARTHandle->pUSARTx == UART5)
+	{
+		UART5_REG_RESET();
+	}else if (pUSARTHandle->pUSARTx == USART6)
+	{
+		USART6_REG_RESET();
+	}
+}
+
 /*********************************************************************
  * @fn      		  - USART_GetFlagStatus
  *
@@ -295,7 +357,7 @@ uint8_t USART_GetFlagStatus(USART_RegDef_t *pUSARTx, uint8_t StatusFlagName)
  *
  * @return            -
  *
- * @Note              - Resolve all the TODOs
+ * @Note              -
 
  */
 void USART_SendData(USART_Handle_t *pUSARTHandle, uint8_t *pTxBuffer, uint32_t Len)
@@ -550,7 +612,7 @@ void USART_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
 		else if(IRQNumber >= 64 && IRQNumber < 96 )
 		{
 			//program ISER2 register //64 to 95
-			*NVIC_ISER3 |= ( 1 << (IRQNumber % 64) );
+			*NVIC_ISER2 |= ( 1 << (IRQNumber % 64) );
 		}
 	}else
 	{
@@ -563,10 +625,10 @@ void USART_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
 			//program ICER1 register
 			*NVIC_ICER1 |= ( 1 << (IRQNumber % 32) );
 		}
-		else if(IRQNumber >= 6 && IRQNumber < 96 )
+		else if(IRQNumber >= 64 && IRQNumber < 96 )
 		{
 			//program ICER2 register
-			*NVIC_ICER3 |= ( 1 << (IRQNumber % 64) );
+			*NVIC_ICER2 |= ( 1 << (IRQNumber % 64) );
 		}
 	}
 
@@ -642,6 +704,7 @@ void USART_IRQHandling(USART_Handle_t *pUSARTHandle)
 				pUSARTHandle->pUSARTx->SR &= ~( 1 << USART_SR_TC);
 
 				//Implement the code to clear the TCIE control bit
+				pUSARTHandle->pUSARTx->CR1 &= ~( 1 << USART_CR1_TCIE);
 
 				//Reset the application state
 				pUSARTHandle->TxBusyState = USART_READY;
@@ -814,7 +877,7 @@ void USART_IRQHandling(USART_Handle_t *pUSARTHandle)
 	temp3 = pUSARTHandle->pUSARTx->CR3 & ( 1 << USART_CR3_CTSIE);
 
 
-	if(temp1  && temp2 )
+	if(temp1  && temp2 && temp3 )
 	{
 		//Implement the code to clear the CTS flag in SR
 		pUSARTHandle->pUSARTx->SR &=  ~( 1 << USART_SR_CTS);
@@ -835,7 +898,9 @@ void USART_IRQHandling(USART_Handle_t *pUSARTHandle)
 	if(temp1 && temp2)
 	{
 		//Implement the code to clear the IDLE flag. Refer to the RM to understand the clear sequence
-		temp1 = pUSARTHandle->pUSARTx->SR &= ~( 1 << USART_SR_IDLE);
+		temp1 = pUSARTHandle->pUSARTx->SR;
+		temp1 = pUSARTHandle->pUSARTx->DR;
+		(void)temp1;
 
 		//this interrupt is because of idle
 		USART_ApplicationEventCallback(pUSARTHandle,USART_EVENT_IDLE);
@@ -844,10 +909,10 @@ void USART_IRQHandling(USART_Handle_t *pUSARTHandle)
 /*************************Check for Overrun detection flag ********************************************/
 
 	//Implement the code to check the status of ORE flag  in the SR
-	temp1 = pUSARTHandle->pUSARTx->SR & USART_SR_ORE;
+	temp1 = pUSARTHandle->pUSARTx->SR & ( 1 << USART_SR_ORE);
 
 	//Implement the code to check the status of RXNEIE  bit in the CR1
-	temp2 = pUSARTHandle->pUSARTx->CR1 & USART_CR1_RXNEIE;
+	temp2 = pUSARTHandle->pUSARTx->CR1 & ( 1 << USART_CR1_RXNEIE);
 
 
 	if(temp1  && temp2 )

@@ -164,7 +164,16 @@ void I2C_PeriClockControl(I2C_RegDef_t *pI2Cx, uint8_t EnorDi)
 	}
 	else
 	{
-		//TODO
+		if(pI2Cx == I2C1)
+		{
+			I2C1_PCLK_DI();
+		}else if (pI2Cx == I2C2)
+		{
+			I2C2_PCLK_DI();
+		}else if (pI2Cx == I2C3)
+		{
+			I2C3_PCLK_DI();
+		}
 	}
 
 }
@@ -267,7 +276,16 @@ void I2C_Init(I2C_Handle_t *pI2CHandle)
  */
 void I2C_DeInit(I2C_RegDef_t *pI2Cx)
 {
-
+	if(pI2Cx == I2C1)
+	{
+		I2C1_REG_RESET();
+	}else if (pI2Cx == I2C2)
+	{
+		I2C2_REG_RESET();
+	}else if (pI2Cx == I2C3)
+	{
+		I2C3_REG_RESET();
+	}
 }
 
 
@@ -455,7 +473,7 @@ void I2C_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
 		else if(IRQNumber >= 64 && IRQNumber < 96 )
 		{
 			//program ISER2 register //64 to 95
-			*NVIC_ISER3 |= ( 1 << (IRQNumber % 64) );
+			*NVIC_ISER2 |= ( 1 << (IRQNumber % 64) );
 		}
 	}else
 	{
@@ -468,10 +486,10 @@ void I2C_IRQInterruptConfig(uint8_t IRQNumber, uint8_t EnorDi)
 			//program ICER1 register
 			*NVIC_ICER1 |= ( 1 << (IRQNumber % 32) );
 		}
-		else if(IRQNumber >= 6 && IRQNumber < 96 )
+		else if(IRQNumber >= 64 && IRQNumber < 96 )
 		{
 			//program ICER2 register
-			*NVIC_ICER3 |= ( 1 << (IRQNumber % 64) );
+			*NVIC_ICER2 |= ( 1 << (IRQNumber % 64) );
 		}
 	}
 

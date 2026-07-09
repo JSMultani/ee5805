@@ -17,10 +17,211 @@
  */
 
 #include <stdint.h>
-#include "stm32f407xx.h"
+
+#include "app_delay.h"
+#include "ili9341.h"
+#include "stm32f407xx_gpio_driver.h"
+#include "stm32f407xx_spi_driver.h"
+
+static void TFT_ControlPinsInit(void);
+static void TFT_SPI1GPIOInit(void);
+static void TFT_SPI1Init(void);
+static void MEMS_AccelerometerDeselect(void);
+static void DebugLEDsInit(void);
+static void DebugBeforeDisplayInit(void);
+static void DebugAfterDisplayInit(void);
+static void DebugBeforeFill(void);
+static void DebugAfterFill(void);
+
+static void TFT_ControlPinsInit(void)
+{
+	GPIO_Handle_t gpio;
+
+	/* PA4 is a normal GPIO output for TFT_CS. CS idles HIGH and goes LOW during SPI transfers. */
+	gpio.pGPIOx = GPIOA;
+	gpio.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_4;
+	gpio.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUT;
+	gpio.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	gpio.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	gpio.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	gpio.GPIO_PinConfig.GPIO_PinAltFunMode = 0;
+	GPIO_Init(&gpio);
+	GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_4, GPIO_PIN_SET);
+
+	/* PB0 is a normal GPIO output for TFT_DC: LOW means command, HIGH means display data. */
+	gpio.pGPIOx = GPIOB;
+	gpio.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_0;
+	gpio.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUT;
+	gpio.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	gpio.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	gpio.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	gpio.GPIO_PinConfig.GPIO_PinAltFunMode = 0;
+	GPIO_Init(&gpio);
+	GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_0, GPIO_PIN_RESET);
+}
+
+static void TFT_SPI1GPIOInit(void)
+{
+	GPIO_Handle_t spi_pins;
+
+	/*
+	 * PA5/PA6/PA7 support SPI1 alternate function AF5:
+	 * PA5 = SCK, PA6 = MISO, PA7 = MOSI.
+	 */
+	spi_pins.pGPIOx = GPIOA;
+	spi_pins.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_ALTFN;
+	spi_pins.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	spi_pins.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	spi_pins.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	spi_pins.GPIO_PinConfig.GPIO_PinAltFunMode = 5;
+
+	spi_pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_5;
+	GPIO_Init(&spi_pins);
+
+	spi_pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_6;
+	GPIO_Init(&spi_pins);
+
+	spi_pins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_7;
+	GPIO_Init(&spi_pins);
+}
+
+static void TFT_SPI1Init(void)
+{
+	SPI_Handle_t spi1_handle;
+
+	spi1_handle.pSPIx = SPI1;
+	spi1_handle.SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
+	spi1_handle.SPIConfig.SPI_BusConfig = SPI_BUS_CONFIG_FD;
+	spi1_handle.SPIConfig.SPI_SclkSpeed = SPI_SCLK_SPEED_DIV64;
+	spi1_handle.SPIConfig.SPI_DFF = SPI_DFF_8BITS;
+	spi1_handle.SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
+	spi1_handle.SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
+	spi1_handle.SPIConfig.SPI_SSM = SPI_SSM_EN;
+
+	SPI_Init(&spi1_handle);
+
+	/* With software slave management, SSI must be HIGH before enabling SPI master mode. */
+	SPI_SSIConfig(SPI1, ENABLE);
+	SPI_PeripheralControl(SPI1, ENABLE);
+}
+
+static void MEMS_AccelerometerDeselect(void)
+{
+	GPIO_Handle_t mems_cs;
+
+	/*
+	 * The STM32F407G-DISC1 onboard LIS302DL accelerometer shares SPI1 pins.
+	 * PE3 is its chip-select pin, so driving PE3 HIGH keeps it off the bus.
+	 */
+	mems_cs.pGPIOx = GPIOE;
+	mems_cs.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_3;
+	mems_cs.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUT;
+	mems_cs.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+	mems_cs.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	mems_cs.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	mems_cs.GPIO_PinConfig.GPIO_PinAltFunMode = 0;
+	GPIO_Init(&mems_cs);
+	GPIO_WriteToOutputPin(GPIOE, GPIO_PIN_NO_3, GPIO_PIN_SET);
+}
+
+static void DebugLEDsInit(void)
+{
+	GPIO_Handle_t led;
+
+	/*
+	 * PD12-PD15 are the STM32F407G-DISC1 onboard LEDs. They are used here
+	 * only as progress checkpoints around the display SPI calls.
+	 */
+	led.pGPIOx = GPIOD;
+	led.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUT;
+	led.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_LOW;
+	led.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	led.GPIO_PinConfig.GPIO_PinPuPdControl = GPIO_NO_PUPD;
+	led.GPIO_PinConfig.GPIO_PinAltFunMode = 0;
+
+	led.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_12;
+	GPIO_Init(&led);
+
+	led.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_13;
+	GPIO_Init(&led);
+
+	led.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_14;
+	GPIO_Init(&led);
+
+	led.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_15;
+	GPIO_Init(&led);
+
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_12, GPIO_PIN_RESET);
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_13, GPIO_PIN_RESET);
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_14, GPIO_PIN_RESET);
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_15, GPIO_PIN_RESET);
+}
+
+static void DebugBeforeDisplayInit(void)
+{
+	/* Green ON means the program is about to enter ILI9341_Init(). */
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_12, GPIO_PIN_SET);
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_13, GPIO_PIN_RESET);
+}
+
+static void DebugAfterDisplayInit(void)
+{
+	/* Orange ON means ILI9341_Init() returned instead of hanging in SPI. */
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_12, GPIO_PIN_RESET);
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_13, GPIO_PIN_SET);
+}
+
+static void DebugBeforeFill(void)
+{
+	/* Red ON means a full-screen color fill is currently running. */
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_14, GPIO_PIN_SET);
+}
+
+static void DebugAfterFill(void)
+{
+	/*
+	 * Red OFF and blue toggle means ILI9341_FillScreen() returned. If the
+	 * firmware hangs in an SPI wait loop, red will stay ON and blue stops.
+	 */
+	GPIO_WriteToOutputPin(GPIOD, GPIO_PIN_NO_14, GPIO_PIN_RESET);
+	GPIO_ToggleOutputPin(GPIOD, GPIO_PIN_NO_15);
+}
 
 int main(void)
 {
-    /* Loop forever */
-	for(;;);
+	app_delay_init();
+	DebugLEDsInit();
+
+	MEMS_AccelerometerDeselect();
+	TFT_SPI1GPIOInit();
+	TFT_SPI1Init();
+	TFT_ControlPinsInit();
+
+	app_delay_ms(100);
+	DebugBeforeDisplayInit();
+	ILI9341_Init();
+	DebugAfterDisplayInit();
+
+	while(1)
+	{
+		DebugBeforeFill();
+		ILI9341_FillScreen(ILI9341_BLACK);
+		DebugAfterFill();
+		app_delay_ms(1000);
+
+		DebugBeforeFill();
+		ILI9341_FillScreen(ILI9341_RED);
+		DebugAfterFill();
+		app_delay_ms(1000);
+
+		DebugBeforeFill();
+		ILI9341_FillScreen(ILI9341_GREEN);
+		DebugAfterFill();
+		app_delay_ms(1000);
+
+		DebugBeforeFill();
+		ILI9341_FillScreen(ILI9341_BLUE);
+		DebugAfterFill();
+		app_delay_ms(1000);
+	}
 }
